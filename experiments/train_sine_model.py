@@ -19,7 +19,7 @@ BATCH_SIZE = 10
 NOISE_VAR = 0.01
 SEED = 42
 ALPHA = 1.0
-N_EPOCH = 250
+N_EPOCH = 1000
 
 def main():
     model_key, data_key = jax.random.split(jax.random.PRNGKey(SEED))
@@ -107,7 +107,7 @@ def main():
     train_stats_dict['model'] = model
     train_stats_dict['n_params'] = D
 
-    with open(f"./checkpoints/syntetic_regression.pickle", "wb") as file:
+    with open(f"./checkpoints/sine_regression.pickle", "wb") as file:
         pickle.dump(
             {"params": params, "alpha": ALPHA, "rho": rho, "train_stats": train_stats_dict}, file
         )
