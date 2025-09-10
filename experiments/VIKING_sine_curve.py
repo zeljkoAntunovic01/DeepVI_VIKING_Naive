@@ -15,7 +15,7 @@ from src.plotting.naive_sine_plots import plot_bayesian_samples_with_mean, plot_
 
 N = 150
 SEED = 42
-NOISE_VAR = 0.01
+NOISE_VAR = 0.96
 
 # 1. Calculation of the projection matrix UUt derived from the GGN
 def calculate_UUt(model_fn, params_vec, x_train, y_train):
@@ -77,7 +77,7 @@ def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samp
 
     # Calculate Tr(Σ_p^{-1} Σ)
     trace_products = hadamard_eps @ prior_vec_inv # (num_samples, 1)
-    trace = ((sigma_ker_2 - sigma_im_2) / num_samples) * jnp.sum(trace_products)
+    trace = ((sigma_ker_2 - sigma_im_2) / num_samples) * jnp.sum(trace_products) + sigma_im_2 * jnp.sum(prior_vec_inv)
 
     # Quadratic term (theta^T Σ_p^{-1} theta)
     hadamard_theta = jnp.square(theta_hat)
@@ -118,7 +118,7 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec):
 
     elbo = rec_term - kl
     
-    return -elbo
+    return -elbo, (rec_term, kl)
 
 
 def main():
@@ -139,8 +139,8 @@ def main():
     prior_vec = jax.random.normal(prior_key, (params_vec.shape[0],))**2 # Vector of prior covariance diagonal values, sigmas squared
 
     sigma_kernel_key, sigma_image_key = jax.random.split(jax.random.PRNGKey(SEED))
-    sigma_kernel = jax.random.normal(sigma_kernel_key)
-    sigma_image = jax.random.normal(sigma_image_key)
+    sigma_kernel = jnp.exp(jax.random.normal(sigma_kernel_key))
+    sigma_image = jnp.exp(jax.random.normal(sigma_image_key))
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
@@ -163,13 +163,13 @@ def main():
     @jax.jit
     def train_step(params_opt, opt_state, UUt, key):
         key, subkey = jax.random.split(key)
-        grad_fn = jax.value_and_grad(loss_fn, argnums=0)
-        loss, grads = grad_fn(
+        grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
+        (loss, (rec_term, kl)), grads = grad_fn(
             params_opt, model_fn_vec, UUt, x_train, y_train, subkey, prior_vec
         )
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
-        return loss, params_opt, opt_state
+        return loss, params_opt, opt_state, rec_term, kl
     
     jit_train_step = jax.jit(train_step)
     num_epochs = 1000  # or however many you want
@@ -183,12 +183,13 @@ def main():
         training_key, subkey = jax.random.split(training_key)
 
         UUt = calculate_UUt(model_fn_vec, params_opt_current["theta"], x_train, y_train)
-        loss, params_opt_current, opt_state_current = jit_train_step(
+        loss, params_opt_current, opt_state_current, rec_term, kl = jit_train_step(
             params_opt_current, opt_state_current, UUt, subkey
         )
 
         if epoch % log_every == 0 or epoch == num_epochs - 1:
             print(f"[Epoch {epoch}] Loss (-ELBO): {loss:.4f}")
+            print(f"Rec term = {rec_term:.4f} ||| KL Term = {kl:.4f}")
 
 
     x_test = jnp.linspace(-3, 3, 200).reshape(-1, 1)
