@@ -14,7 +14,7 @@ from src.data.sinedata import generate_data, f
 from src.utils import compute_num_params
 from src.losses import sse_loss
 
-N = 100
+N = 50
 BATCH_SIZE = 10
 NOISE_VAR = 0.01
 SEED = 42
@@ -27,7 +27,7 @@ def main():
     x_val = jnp.linspace(-2, 2, 100).reshape(-1, 1)
     y_val = f(x_val)
 
-    model = SineNet(out_dims=1, hidden_dim=10, num_layers=2)
+    model = SineNet(out_dims=1, hidden_dim=8 ,num_layers=2)
     params = model.init(model_key, x_train[:BATCH_SIZE])
     n_batches = N // BATCH_SIZE
     rho =  1 / NOISE_VAR

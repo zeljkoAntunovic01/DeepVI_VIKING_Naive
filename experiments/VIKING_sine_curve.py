@@ -4,14 +4,16 @@ import optax
 import pickle
 import os
 import sys
+import matplotlib.pyplot as plt
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.utils import estimate_sigma, vectorize_nn
 from src.data.sinedata import generate_data
 from src.losses import sse_loss
+from src.plotting.naive_sine_plots import plot_bayesian_samples_with_mean, plot_mean_bayesian_with_MAP
 
-N = 100
+N = 50
 SEED = 42
 NOISE_VAR = 0.01
 
@@ -23,6 +25,7 @@ def calculate_UUt(model_fn, params_vec, x_train, y_train):
 
     GGN = (1.0 / sigma2_est) * (J.T @ J)
     D, V = jnp.linalg.eigh(GGN)
+    D = jnp.clip(D, a_min=None, a_max=100)
     null_mask = jnp.where(D <= 1e-2, 1.0, 0.0)
     I_p = jnp.eye(GGN.shape[0])
 
@@ -119,13 +122,17 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec):
 
 
 def main():
-    prior_key, data_key = jax.random.split(jax.random.PRNGKey(SEED))
-    x_train, y_train = generate_data(key=data_key)
+    prior_key, post_key = jax.random.split(jax.random.PRNGKey(SEED), num=2)
 
     # Load model, extract params...
     with open("./checkpoints/sine_regression.pickle", "rb") as f:
         checkpoint = pickle.load(f)
 
+    x_train = checkpoint["train_stats"]["x_train"]
+    y_train = checkpoint["train_stats"]["y_train"]
+
+    if (x_train.shape[0] != N):
+        raise (f"Train data length does not match the value of N={N}")
     params_dict = checkpoint["params"]
     model = checkpoint["train_stats"]["model"]
     params_vec, unflatten, model_fn_vec = vectorize_nn(model.apply, params_dict)
@@ -165,7 +172,7 @@ def main():
         return loss, params_opt, opt_state
     
     jit_train_step = jax.jit(train_step)
-    num_epochs = 1000  # or however many you want
+    num_epochs = 1500  # or however many you want
     log_every = 25
 
     params_opt_current = params_opt
@@ -183,6 +190,47 @@ def main():
         if epoch % log_every == 0 or epoch == num_epochs - 1:
             print(f"[Epoch {epoch}] Loss (-ELBO): {loss:.4f}")
 
+
+    x_test = jnp.linspace(-3, 3, 200).reshape(-1, 1)
+    # Sample posterior thetas
+    thetas, _, _ = sample_theta(
+        key=post_key,
+        num_samples=50,  # number of posterior samples to draw
+        UUt=UUt,
+        theta_hat=params_opt_current["theta"],
+        sigma_ker=params_opt_current["sigma_ker"],
+        sigma_im=params_opt_current["sigma_im"]
+    )
+
+    # Forward pass for all posterior samples
+    def predict(theta):
+        return model_fn_vec(theta, x_test)
+
+    y_preds = jax.vmap(predict)(thetas)
+
+    # Mean prediction and uncertainty intervals
+    y_mean = jnp.mean(y_preds, axis=0).squeeze()
+    y_std = jnp.std(y_preds, axis=0).squeeze()
+
+    # MAP prediction (red line)
+    y_map = model_fn_vec(params_vec, x_test).squeeze()
+
+    plot_mean_bayesian_with_MAP(
+        x_train=x_train,
+        y_train=y_train,
+        x_test=x_test,
+        y_mean=y_mean,
+        y_map=y_map,
+        y_std=y_std
+    )
+
+    plot_bayesian_samples_with_mean(
+        x_train=x_train,
+        y_train=y_train,
+        x_test=x_test,
+        y_mean=y_mean,
+        y_preds=y_preds
+    )
 
 if __name__ == "__main__":
     main()

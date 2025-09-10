@@ -1,24 +1,9 @@
-# model.py
-from flax import linen as nn
-from jax import nn as jnn
-import jax 
-import jax.numpy as jnp
 from typing import NamedTuple
 
-class SineNet(nn.Module):
-    out_dims: 1
-    hidden_dim: 8
-    num_layers: 2
+import jax
+import jax.numpy as jnp
 
-    @nn.compact
-    def __call__(self, x):
-        x = x.reshape((x.shape[0], -1))
-        for _ in range(self.num_layers):
-            x = nn.Dense(self.hidden_dim)(x)
-            x = jnn.tanh(x)
-        x = nn.Dense(self.out_dims)(x)  # shape inference
-        return x
-    
+
 # One example of what can be a "PyTree"
 # (I'm doing this to avoid using any frameworks in this example)
 class ModelParams(NamedTuple):
@@ -52,3 +37,31 @@ def make_mlp(num_hidden):
         return x
 
     return init_fn, apply_fn
+
+
+# This generates the data
+def make_wave(key, num: int):
+    std = jnp.linspace(1e-3, 1e0, num)
+    x = jnp.linspace(0.35, 0.65, num)
+    y = 5 * jnp.sin(10 * x)
+
+    z = jax.random.normal(key, shape=y.shape)
+    return x, y + std * z
+
+
+# I tend to do the following to create data with the "gap" in the middle
+key = jax.random.PRNGKey(seed=0)
+key, key_data = jax.random.split(key)
+x, y = make_wave(key_data, num=20)
+x = jnp.concatenate((x[:5], x[-5:]))
+y = jnp.concatenate((y[:5], y[-5:]))
+
+# Model usage
+key, key_model = jax.random.split(key)
+model_init_fn, model_apply_fn = make_mlp(num_hidden=8)
+model_params = model_init_fn(num_inputs=1, key=key_model)
+vmapped_apply_fn = jax.vmap(model_apply_fn, in_axes=(None, 0))
+
+# Predictions on entire data (note the `vmapped_apply_fn` usage, since
+# `apply_fn` is defined on a single data point)
+y_hat = vmapped_apply_fn(model_params, x)
