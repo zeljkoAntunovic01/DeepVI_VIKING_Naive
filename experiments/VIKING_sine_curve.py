@@ -33,20 +33,15 @@ def calculate_UUt(model_fn, params_vec, x_train, y_train):
 def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
     D = theta_hat.shape[0]
     subkeys = jax.random.split(key, num_samples)
-    eps_samples = []
-    eps_ker_samples = []
     
     def sample_fn(subkey):
         eps = jax.random.normal(subkey, (D,))
         eps_ker = UUt @ eps
-
-        eps_samples.append(eps)
-        eps_ker_samples.append(eps_ker)
-
         eps_im = eps - eps_ker
-        return theta_hat + sigma_ker * eps_ker + sigma_im * eps_im
-    
-    thetas = jax.vmap(sample_fn)(subkeys)
+        theta = theta_hat + sigma_ker * eps_ker + sigma_im * eps_im
+        return theta, eps, eps_ker
+
+    thetas, eps_samples, eps_ker_samples = jax.vmap(sample_fn)(subkeys)
     return thetas, eps_samples, eps_ker_samples
 
 # 3. Reconstruction term of the ELBO
@@ -70,11 +65,32 @@ def reconstruction_term(model_fn_vec, thetas, x, y):
     return jnp.mean(log_likelihoods)
 
 # 4. KL term of the ELBO
-def KL_term(prior_vec, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
-    pass
+def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
+    sigma_ker_2 = sigma_ker ** 2
+    sigma_im_2 = sigma_im ** 2
+    prior_vec_inv = 1.0 / prior_vec
+    num_samples, D = eps_samples.shape
+    hadamard_eps = eps_samples * eps_ker_samples # (num_samples, D)
+
+    # Calculate Tr(Σ_p^{-1} Σ)
+    trace_products = hadamard_eps @ prior_vec_inv # (num_samples, 1)
+    trace = ((sigma_ker_2 - sigma_im_2) / num_samples) * jnp.sum(trace_products)
+
+    # Quadratic term (theta^T Σ_p^{-1} theta)
+    hadamard_theta = jnp.square(theta_hat)
+    middle_term = jnp.dot(prior_vec_inv, hadamard_theta)
+
+    ln_det_prior = jnp.sum(jnp.log(prior_vec))
+
+    R = jnp.mean(jnp.sum(eps_samples * eps_ker_samples, axis=1))  # shape (S,) -> mean -> shape(1,)
+    ln_det_post = 2 * R * jnp.log(sigma_ker) + 2 * (D - R) * jnp.log(sigma_im)
+
+    return 0.5 * (
+        trace - D + middle_term + ln_det_prior - ln_det_post
+    )
 
 # 5. Loss function (negative ELBO) that needs to be optimized with gradient descent
-def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key):
+def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec):
     thetas, eps_samples, eps_ker_samples = sample_theta(
         key=sample_key,
         num_samples=100,
@@ -84,15 +100,26 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key):
         sigma_im=params_opt["sigma_im"]
     )
 
+    # Reconstruction part
     rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
-    kl_term = KL_term()
-    elbo = rec_term - kl_term
+
+    # KL term
+    kl = KL_term(
+        prior_vec=prior_vec,
+        theta_hat=params_opt["theta"],
+        sigma_ker=params_opt["sigma_ker"],
+        sigma_im=params_opt["sigma_im"],
+        eps_samples=eps_samples,
+        eps_ker_samples=eps_ker_samples
+    )
+
+    elbo = rec_term - kl
     
     return -elbo
 
 
 def main():
-    _, data_key = jax.random.split(jax.random.PRNGKey(SEED))
+    prior_key, data_key = jax.random.split(jax.random.PRNGKey(SEED))
     x_train, y_train = generate_data(key=data_key)
 
     # Load model, extract params...
@@ -100,9 +127,9 @@ def main():
         checkpoint = pickle.load(f)
 
     params_dict = checkpoint["params"]
-    params = params_dict['params']
     model = checkpoint["train_stats"]["model"]
     params_vec, unflatten, model_fn_vec = vectorize_nn(model.apply, params_dict)
+    prior_vec = jax.random.normal(prior_key, (params_vec.shape[0],))**2 # Vector of prior covariance diagonal values, sigmas squared
 
     sigma_kernel_key, sigma_image_key = jax.random.split(jax.random.PRNGKey(SEED))
     sigma_kernel = jax.random.normal(sigma_kernel_key)
@@ -115,7 +142,14 @@ def main():
         "sigma_im": sigma_image,
     }
 
-    optimizer = optax.adam(learning_rate=1e-3)
+    schedule = optax.exponential_decay(
+        init_value=1e-3,   # starting LR
+        transition_steps=100,  # how often to decay (in steps)
+        decay_rate=0.99,   # multiply LR by this every transition
+        end_value=1e-5     # minimum LR
+    )
+
+    optimizer = optax.adam(learning_rate=schedule)
     opt_state = optimizer.init(params_opt)
 
     # 6. Training step of our optimization algorithm for optimizing our Loss (-ELBO)
@@ -123,13 +157,15 @@ def main():
     def train_step(params_opt, opt_state, UUt, key):
         key, subkey = jax.random.split(key)
         grad_fn = jax.value_and_grad(loss_fn, argnums=0)
-        loss, grads = grad_fn(params_opt, model_fn_vec, UUt, x_train, y_train, subkey)
+        loss, grads = grad_fn(
+            params_opt, model_fn_vec, UUt, x_train, y_train, subkey, prior_vec
+        )
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
         return loss, params_opt, opt_state
     
     jit_train_step = jax.jit(train_step)
-    num_epochs = 250  # or however many you want
+    num_epochs = 1000  # or however many you want
     log_every = 25
 
     params_opt_current = params_opt
