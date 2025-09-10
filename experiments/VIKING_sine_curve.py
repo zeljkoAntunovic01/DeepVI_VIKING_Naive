@@ -13,7 +13,7 @@ from src.data.sinedata import generate_data
 from src.losses import sse_loss
 from src.plotting.naive_sine_plots import plot_bayesian_samples_with_mean, plot_mean_bayesian_with_MAP
 
-N = 50
+N = 150
 SEED = 42
 NOISE_VAR = 0.01
 
@@ -172,7 +172,7 @@ def main():
         return loss, params_opt, opt_state
     
     jit_train_step = jax.jit(train_step)
-    num_epochs = 1500  # or however many you want
+    num_epochs = 1000  # or however many you want
     log_every = 25
 
     params_opt_current = params_opt
@@ -231,6 +231,16 @@ def main():
         y_mean=y_mean,
         y_preds=y_preds
     )
+
+    elbo_params_dict = {}
+    elbo_params_dict["sigma_ker"] = params_opt_current["sigma_ker"]
+    elbo_params_dict["sigma_im"] = params_opt_current["sigma_im"]
+    elbo_params_dict["theta"] = params_opt_current["theta"]
+
+    with open(f"./checkpoints/sine_VIKING.pickle", "wb") as file:
+        pickle.dump(
+            {"elbo_params": elbo_params_dict}, file
+        )
 
 if __name__ == "__main__":
     main()

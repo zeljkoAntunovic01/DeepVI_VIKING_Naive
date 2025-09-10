@@ -14,7 +14,7 @@ from src.data.sinedata import generate_data, f
 from src.utils import compute_num_params
 from src.losses import sse_loss
 
-N = 50
+N = 150
 BATCH_SIZE = 10
 NOISE_VAR = 0.01
 SEED = 42
