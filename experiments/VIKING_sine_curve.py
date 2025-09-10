@@ -92,6 +92,25 @@ def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samp
         trace - D + middle_term + ln_det_prior - ln_det_post
     )
 
+# KL Term from the paper for debugging purposes
+def KL_term_alpha(alpha_inv, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
+    sigma_ker_2 = sigma_ker ** 2
+    sigma_im_2 = sigma_im ** 2
+    alpha = 1.0 / alpha_inv
+    num_samples, D = eps_samples.shape
+
+    R = jnp.mean(jnp.sum(eps_samples * eps_ker_samples, axis=1))  # shape (S,) -> mean -> shape(1,)
+
+    # Calculate Tr(Σ)
+    trace = sigma_ker_2 * R + sigma_im_2 * (D - R)
+
+    # Ln(Σ)
+    ln_det_post = 2 * R * jnp.log(sigma_ker) + 2 * (D - R) * jnp.log(sigma_im)
+
+    return 0.5 * (
+        alpha * trace - D + alpha * (jnp.linalg.norm(theta_hat) ** 2) - D * jnp.log(alpha) - ln_det_post
+    )
+
 # 5. Loss function (negative ELBO) that needs to be optimized with gradient descent
 def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec):
     thetas, eps_samples, eps_ker_samples = sample_theta(
@@ -137,6 +156,7 @@ def main():
     model = checkpoint["train_stats"]["model"]
     params_vec, unflatten, model_fn_vec = vectorize_nn(model.apply, params_dict)
     prior_vec = jax.random.normal(prior_key, (params_vec.shape[0],))**2 # Vector of prior covariance diagonal values, sigmas squared
+    #alpha_inv = 1.0 / 0.5
 
     sigma_kernel_key, sigma_image_key = jax.random.split(jax.random.PRNGKey(SEED))
     sigma_kernel = jnp.exp(jax.random.normal(sigma_kernel_key))
