@@ -56,7 +56,7 @@ def reconstruction_term(model_fn_vec, thetas, x, y):
 
     def log_likelihood(theta):
         y_pred = model_fn_vec(theta, x)
-        sse = jnp.sum(sse_loss(y_pred, y))
+        sse = sse_loss(y_pred, y)
         log_prob = (
             -N * O / 2 * jnp.log(2 * jnp.pi)
             + N * O / 2 * log_rho
@@ -170,7 +170,7 @@ def main():
     }
 
     schedule = optax.exponential_decay(
-        init_value=1e-3,   # starting LR
+        init_value=1e-2,   # starting LR
         transition_steps=100,  # how often to decay (in steps)
         decay_rate=0.99,   # multiply LR by this every transition
         end_value=1e-5     # minimum LR
