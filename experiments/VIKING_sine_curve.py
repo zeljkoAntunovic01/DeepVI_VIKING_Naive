@@ -96,7 +96,8 @@ def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samp
 def KL_term_alpha(alpha_inv, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
     sigma_ker_2 = jnp.exp(sigma_ker) ** 2
     sigma_im_2 = jnp.exp(sigma_im) ** 2
-    alpha = 1.0 / alpha_inv
+    #alpha = 1.0 / alpha_inv
+    alpha = 1.0 / sigma_ker_2
     num_samples, D = eps_samples.shape
 
     R = jnp.mean(jnp.sum(eps_samples * eps_ker_samples, axis=1))  # shape (S,) -> mean -> shape(1,)
@@ -126,23 +127,23 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec):
     rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
 
     # KL term
-    """ kl = KL_term(
+    kl = KL_term(
         prior_vec=prior_vec,
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
         eps_ker_samples=eps_ker_samples
-    ) """
+    )
 
-    kl = KL_term_alpha(
+    """ kl = KL_term_alpha(
         alpha_inv = prior_vec,
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
         eps_ker_samples=eps_ker_samples
-    )
+    ) """
 
     elbo = rec_term - kl
     
@@ -168,11 +169,12 @@ def main():
     alpha_inv = 1.0 / 0.5
 
     sigma_kernel_key, sigma_image_key = jax.random.split(jax.random.PRNGKey(SEED))
-    sigma_kernel = jnp.exp(jax.random.normal(sigma_kernel_key))
-    sigma_image = jnp.exp(jax.random.normal(sigma_image_key))
+    sigma_kernel = 0.3
+    sigma_image = 0.6
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
+        #"prior_vec": prior_vec,
         "theta": params_vec,
         "sigma_ker": jnp.log(sigma_kernel),
         "sigma_im": jnp.log(sigma_image),
@@ -194,15 +196,15 @@ def main():
         key, subkey = jax.random.split(key)
         grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
         (loss, (rec_term, kl)), grads = grad_fn(
-            params_opt, model_fn_vec, UUt, x_train, y_train, subkey, alpha_inv
+            params_opt, model_fn_vec, UUt, x_train, y_train, subkey, prior_vec
         )
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
         return loss, params_opt, opt_state, rec_term, kl
     
     jit_train_step = jax.jit(train_step)
-    num_epochs = 1000  # or however many you want
-    log_every = 25
+    num_epochs = 3000  # or however many you want
+    log_every = 75
 
     params_opt_current = params_opt
     opt_state_current = opt_state
