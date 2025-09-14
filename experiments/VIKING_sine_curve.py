@@ -41,7 +41,7 @@ def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
         eps = jax.random.normal(subkey, (D,))
         eps_ker = UUt @ eps
         eps_im = eps - eps_ker
-        theta = theta_hat + sigma_ker * eps_ker + sigma_im * eps_im
+        theta = theta_hat + jnp.exp(sigma_ker) * eps_ker + jnp.exp(sigma_im)* eps_im
         return theta, eps, eps_ker
 
     thetas, eps_samples, eps_ker_samples = jax.vmap(sample_fn)(subkeys)
@@ -69,8 +69,8 @@ def reconstruction_term(model_fn_vec, thetas, x, y):
 
 # 4. KL term of the ELBO
 def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
-    sigma_ker_2 = sigma_ker ** 2
-    sigma_im_2 = sigma_im ** 2
+    sigma_ker_2 = jnp.exp(sigma_ker) ** 2
+    sigma_im_2 = jnp.exp(sigma_im) ** 2
     prior_vec_inv = 1.0 / prior_vec
     num_samples, D = eps_samples.shape
     hadamard_eps = eps_samples * eps_ker_samples # (num_samples, D)
@@ -86,7 +86,7 @@ def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samp
     ln_det_prior = jnp.sum(jnp.log(prior_vec))
 
     R = jnp.mean(jnp.sum(eps_samples * eps_ker_samples, axis=1))  # shape (S,) -> mean -> shape(1,)
-    ln_det_post = 2 * R * jnp.log(sigma_ker) + 2 * (D - R) * jnp.log(sigma_im)
+    ln_det_post = 2 * R * sigma_ker + 2 * (D - R) * sigma_im
 
     return 0.5 * (
         trace - D + middle_term + ln_det_prior - ln_det_post
@@ -94,8 +94,8 @@ def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samp
 
 # KL Term from the paper for debugging purposes
 def KL_term_alpha(alpha_inv, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
-    sigma_ker_2 = sigma_ker ** 2
-    sigma_im_2 = sigma_im ** 2
+    sigma_ker_2 = jnp.exp(sigma_ker) ** 2
+    sigma_im_2 = jnp.exp(sigma_im) ** 2
     alpha = 1.0 / alpha_inv
     num_samples, D = eps_samples.shape
 
@@ -105,7 +105,7 @@ def KL_term_alpha(alpha_inv, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ke
     trace = sigma_ker_2 * R + sigma_im_2 * (D - R)
 
     # Ln(Σ)
-    ln_det_post = 2 * R * jnp.log(sigma_ker) + 2 * (D - R) * jnp.log(sigma_im)
+    ln_det_post = 2 * R * sigma_ker + 2 * (D - R) * sigma_im
 
     return 0.5 * (
         alpha * trace - D + alpha * (jnp.linalg.norm(theta_hat) ** 2) - D * jnp.log(alpha) - ln_det_post
@@ -126,8 +126,17 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec):
     rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
 
     # KL term
-    kl = KL_term(
+    """ kl = KL_term(
         prior_vec=prior_vec,
+        theta_hat=params_opt["theta"],
+        sigma_ker=params_opt["sigma_ker"],
+        sigma_im=params_opt["sigma_im"],
+        eps_samples=eps_samples,
+        eps_ker_samples=eps_ker_samples
+    ) """
+
+    kl = KL_term_alpha(
+        alpha_inv = prior_vec,
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
@@ -156,7 +165,7 @@ def main():
     model = checkpoint["train_stats"]["model"]
     params_vec, unflatten, model_fn_vec = vectorize_nn(model.apply, params_dict)
     prior_vec = jax.random.normal(prior_key, (params_vec.shape[0],))**2 # Vector of prior covariance diagonal values, sigmas squared
-    #alpha_inv = 1.0 / 0.5
+    alpha_inv = 1.0 / 0.5
 
     sigma_kernel_key, sigma_image_key = jax.random.split(jax.random.PRNGKey(SEED))
     sigma_kernel = jnp.exp(jax.random.normal(sigma_kernel_key))
@@ -165,8 +174,8 @@ def main():
 
     params_opt = {
         "theta": params_vec,
-        "sigma_ker": sigma_kernel,
-        "sigma_im": sigma_image,
+        "sigma_ker": jnp.log(sigma_kernel),
+        "sigma_im": jnp.log(sigma_image),
     }
 
     schedule = optax.exponential_decay(
@@ -185,7 +194,7 @@ def main():
         key, subkey = jax.random.split(key)
         grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
         (loss, (rec_term, kl)), grads = grad_fn(
-            params_opt, model_fn_vec, UUt, x_train, y_train, subkey, prior_vec
+            params_opt, model_fn_vec, UUt, x_train, y_train, subkey, alpha_inv
         )
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
