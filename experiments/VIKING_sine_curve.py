@@ -4,12 +4,11 @@ import optax
 import pickle
 import os
 import sys
-import matplotlib.pyplot as plt
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.utils import estimate_sigma, vectorize_nn
-from src.data.sinedata import generate_data
+from src.sampling import calculate_UUt, sample_theta
+from src.utils import vectorize_nn
 from src.losses import sse_loss
 from src.plotting.naive_sine_plots import plot_bayesian_samples_with_mean, plot_mean_bayesian_with_MAP
 
@@ -17,37 +16,7 @@ N = 150
 SEED = 42
 NOISE_VAR = 0.96
 
-# 1. Calculation of the projection matrix UUt derived from the GGN
-def calculate_UUt(model_fn, params_vec, x_train, y_train):
-    model_fn_lmbd = lambda p: jnp.squeeze(model_fn(p, x_train))
-    J = jax.jacfwd(model_fn_lmbd)(params_vec)
-    sigma2_est = estimate_sigma(params_vec, model_fn_lmbd, y_train)
-
-    GGN = (1.0 / sigma2_est) * (J.T @ J)
-    D, V = jnp.linalg.eigh(GGN)
-    D = jnp.clip(D, a_min=None, a_max=100)
-    null_mask = jnp.where(D <= 1e-2, 1.0, 0.0)
-    I_p = jnp.eye(GGN.shape[0])
-
-    UUt = I_p - (V @ (1.0 - null_mask)) @ V.T
-    return UUt
-
-# 2. Function that samples theta from our posterior
-def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
-    D = theta_hat.shape[0]
-    subkeys = jax.random.split(key, num_samples)
-    
-    def sample_fn(subkey):
-        eps = jax.random.normal(subkey, (D,))
-        eps_ker = UUt @ eps
-        eps_im = eps - eps_ker
-        theta = theta_hat + jnp.exp(sigma_ker) * eps_ker + jnp.exp(sigma_im)* eps_im
-        return theta, eps, eps_ker
-
-    thetas, eps_samples, eps_ker_samples = jax.vmap(sample_fn)(subkeys)
-    return thetas, eps_samples, eps_ker_samples
-
-# 3. Reconstruction term of the ELBO
+# Reconstruction term of the ELBO
 def reconstruction_term(model_fn_vec, thetas, x, y):
     B = x.shape[0]
     O = y.shape[-1]
@@ -67,7 +36,7 @@ def reconstruction_term(model_fn_vec, thetas, x, y):
     log_likelihoods = jax.vmap(log_likelihood)(thetas)
     return jnp.mean(log_likelihoods)
 
-# 4. KL term of the ELBO
+# KL term of the ELBO
 def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
     sigma_ker_2 = jnp.exp(sigma_ker) ** 2
     sigma_im_2 = jnp.exp(sigma_im) ** 2
