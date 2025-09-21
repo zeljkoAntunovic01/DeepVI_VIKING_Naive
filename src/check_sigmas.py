@@ -2,7 +2,7 @@ import pickle
 import jax.numpy as jnp
 
 # Load model, extract params...
-with open("./checkpoints/sine_VIKING.pickle", "rb") as f:
+with open("./checkpoints/sine_VIKING_ALPHA_exact.pickle", "rb") as f:
     checkpoint = pickle.load(f)
 
 elbo_stats = checkpoint["elbo_params"]

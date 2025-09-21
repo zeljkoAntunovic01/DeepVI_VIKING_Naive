@@ -81,7 +81,7 @@ def KL_term_alpha(theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
     )
 
 
-def loss_fn(params_opt, model_fn_vec, x, y, sample_key, prior_vec):
+def loss_fn(params_opt, model_fn_vec, x, y, sample_key):
     # Step 1: Build J at current params
     J = compute_J(params_opt["theta"], model_fn_vec, x, y)
 
@@ -99,8 +99,16 @@ def loss_fn(params_opt, model_fn_vec, x, y, sample_key, prior_vec):
     rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
 
     # Step 4: KL
-    kl = KL_term(
+    """ kl = KL_term(
         prior_vec=prior_vec,
+        theta_hat=params_opt["theta"],
+        sigma_ker=params_opt["sigma_ker"],
+        sigma_im=params_opt["sigma_im"],
+        eps_samples=eps_samples,
+        eps_ker_samples=eps_ker_samples
+    ) """
+
+    kl = KL_term_alpha(
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
@@ -133,7 +141,7 @@ def main():
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
-        "prior_vec": prior_vec,
+        #"prior_vec": prior_vec,
         "theta": params_vec,
         "sigma_ker": jnp.log(sigma_kernel),
         "sigma_im": jnp.log(sigma_image),
@@ -158,7 +166,7 @@ def main():
         key, subkey = jax.random.split(key)
         grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
         (loss, (rec_term, kl)), grads = grad_fn(
-            params_opt, model_fn_vec, x_train, y_train, subkey, prior_vec
+            params_opt, model_fn_vec, x_train, y_train, subkey, #prior_vec
         )
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
@@ -227,7 +235,7 @@ def main():
     elbo_params_dict["sigma_im"] = params_opt_current["sigma_im"]
     elbo_params_dict["theta"] = params_opt_current["theta"]
 
-    with open(f"./checkpoints/sine_VIKING_exact.pickle", "wb") as file:
+    with open(f"./checkpoints/sine_VIKING_ALPHA_exact.pickle", "wb") as file:
         pickle.dump(
             {"elbo_params": elbo_params_dict}, file
         )
