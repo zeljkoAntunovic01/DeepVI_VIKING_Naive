@@ -93,10 +93,9 @@ def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samp
     )
 
 # KL Term from the paper for debugging purposes
-def KL_term_alpha(alpha_inv, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
+def KL_term_alpha(theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
     sigma_ker_2 = jnp.exp(sigma_ker) ** 2
     sigma_im_2 = jnp.exp(sigma_im) ** 2
-    #alpha = 1.0 / alpha_inv
     alpha = 1.0 / sigma_ker_2
     num_samples, D = eps_samples.shape
 
@@ -137,7 +136,6 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec):
     )
 
     """ kl = KL_term_alpha(
-        alpha_inv = prior_vec,
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
@@ -165,16 +163,14 @@ def main():
     params_dict = checkpoint["params"]
     model = checkpoint["train_stats"]["model"]
     params_vec, unflatten, model_fn_vec = vectorize_nn(model.apply, params_dict)
-    prior_vec = jax.random.normal(prior_key, (params_vec.shape[0],))**2 # Vector of prior covariance diagonal values, sigmas squared
-    alpha_inv = 1.0 / 0.5
+    prior_vec = jnp.clip(jax.random.normal(prior_key, (params_vec.shape[0],)) ** 2, 0.1, 10.0) # Vector of prior covariance diagonal values, sigmas squared
 
-    sigma_kernel_key, sigma_image_key = jax.random.split(jax.random.PRNGKey(SEED))
     sigma_kernel = 0.3
     sigma_image = 0.6
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
-        #"prior_vec": prior_vec,
+        "prior_vec": prior_vec,
         "theta": params_vec,
         "sigma_ker": jnp.log(sigma_kernel),
         "sigma_im": jnp.log(sigma_image),
