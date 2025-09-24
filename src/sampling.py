@@ -26,6 +26,26 @@ def calculate_UUt(model_fn, params_vec, x_train, y_train):
     UUt = I_p - (V @ (1.0 - null_mask)) @ V.T
     return UUt
 
+def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, rtol=1e-4):
+    # Jacobian: shape (N, D)
+    model_fn_lmbd = lambda p: jnp.squeeze(model_fn(p, x_train))
+    J = jax.jacfwd(model_fn_lmbd)(params_vec)
+
+    # Full SVD (J = U Σ V^T)
+    U, S, VT = jnp.linalg.svd(J, full_matrices=False)  # VT: (D, D)
+
+    # Determine rank (non-negligible singular values)
+    tol = rtol * jnp.max(S)
+    r = jnp.sum(S > tol)
+
+    # Kernel basis is last D - r columns of V^T
+    V_null = VT[r:].T  # (D, D - r)
+
+    # Projection onto kernel subspace
+    UUt = V_null @ V_null.T
+    return UUt
+
+
 def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
     D = theta_hat.shape[0]
     subkeys = jax.random.split(key, num_samples)

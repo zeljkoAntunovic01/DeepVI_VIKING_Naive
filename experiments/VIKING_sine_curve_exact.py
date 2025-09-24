@@ -136,8 +136,9 @@ def main():
     params_vec, unflatten, model_fn_vec = vectorize_nn(model.apply, params_dict)
     prior_vec = jnp.clip(jax.random.normal(prior_key, (params_vec.shape[0],)) ** 2, 0.1, 10.0) # Vector of prior covariance diagonal values, sigmas squared
 
-    sigma_kernel = 0.3
-    sigma_image = 0.6
+    sigma_kernel = jnp.exp(0.0)
+    sigma_image = jnp.exp(-2.0)
+    print(f"Initial log sigma_kernel: {jnp.log(sigma_kernel)}, Initial log sigma_image: {jnp.log(sigma_image)}")
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
@@ -193,7 +194,7 @@ def main():
     J = compute_J(params_opt_current["theta"], model_fn_vec, x_train, y_train)
     thetas, _, _ = sample_theta_exact(
         key=post_key,
-        num_samples=50,  # number of posterior samples to draw
+        num_samples=100,  # number of posterior samples to draw
         J=J,
         theta_hat=params_opt_current["theta"],
         sigma_ker=params_opt_current["sigma_ker"],

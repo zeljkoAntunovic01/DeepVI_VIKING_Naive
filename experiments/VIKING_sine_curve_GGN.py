@@ -7,7 +7,7 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.sampling import calculate_UUt, sample_theta
+from src.sampling import calculate_UUt, calculate_UUt_svd, sample_theta
 from src.utils import vectorize_nn
 from src.losses import sse_loss
 from src.plotting.naive_sine_plots import plot_bayesian_samples_with_mean, plot_mean_bayesian_with_MAP
@@ -126,7 +126,9 @@ def main():
 
     prior_vec = jnp.clip(jax.random.normal(prior_key, (params_vec.shape[0],)) ** 2, 0.1, 10.0)
 
-    sigma_kernel, sigma_image = 0.3, 0.6
+    sigma_kernel = jnp.exp(0.0)
+    sigma_image = jnp.exp(-2.0)
+    print(f"Initial log sigma_kernel: {jnp.log(sigma_kernel)}, Initial log sigma_image: {jnp.log(sigma_image)}")
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
@@ -154,7 +156,7 @@ def main():
 
     for epoch in range(num_epochs):
         training_key, subkey = jax.random.split(training_key)
-        UUt = calculate_UUt(model_fn_vec, params_opt_current["theta"], x_train, y_train)
+        UUt = calculate_UUt_svd(model_fn_vec, params_opt_current["theta"], x_train, y_train)
         loss, params_opt_current, opt_state_current, rec_term, kl = train_step(params_opt_current, opt_state_current, UUt, subkey)
 
         if epoch % log_every == 0 or epoch == num_epochs - 1:
