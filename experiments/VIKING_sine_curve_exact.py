@@ -18,19 +18,11 @@ NOISE_VAR = 0.96
 
 # Reconstruction term of the ELBO
 def reconstruction_term(model_fn_vec, thetas, x, y):
-    B = x.shape[0]
-    O = y.shape[-1]
-    rho =  1 / NOISE_VAR
-    log_rho = jnp.log(rho)
+    rho = 1 / NOISE_VAR
 
     def log_likelihood(theta):
         y_pred = model_fn_vec(theta, x)
-        sse = sse_loss(y_pred, y)
-        log_prob = (
-            -N * O / 2 * jnp.log(2 * jnp.pi)
-            + N * O / 2 * log_rho
-            - (N / B) * 0.5 * rho * sse
-        )
+        log_prob = -0.5 * rho * sse_loss(y_pred, y)
         return log_prob
 
     log_likelihoods = jax.vmap(log_likelihood)(thetas)
@@ -86,7 +78,7 @@ def loss_fn(params_opt, model_fn_vec, x, y, sample_key):
     J = compute_J(params_opt["theta"], model_fn_vec, x, y)
 
     # Step 2: Sample using exact projection
-    thetas, eps_samples, eps_ker_samples = sample_theta_exact(
+    thetas, eps_samples, eps_ker_samples, dot_products = sample_theta_exact(
         key=sample_key,
         num_samples=100,
         J=J,
@@ -117,7 +109,7 @@ def loss_fn(params_opt, model_fn_vec, x, y, sample_key):
     )
 
     elbo = rec_term - kl
-    return -elbo, (rec_term, kl)
+    return -elbo, (rec_term, kl, dot_products)
 
 def main():
     prior_key, post_key = jax.random.split(jax.random.PRNGKey(SEED), num=2)
@@ -166,12 +158,12 @@ def main():
     def train_step(params_opt, opt_state, key):
         key, subkey = jax.random.split(key)
         grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
-        (loss, (rec_term, kl)), grads = grad_fn(
+        (loss, (rec_term, kl, dot_products)), grads = grad_fn(
             params_opt, model_fn_vec, x_train, y_train, subkey, #prior_vec
         )
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
-        return loss, params_opt, opt_state, rec_term, kl
+        return loss, params_opt, opt_state, rec_term, kl, dot_products
     
     jit_train_step = jax.jit(train_step)
 
@@ -181,18 +173,23 @@ def main():
 
     for epoch in range(num_epochs):
         training_key, subkey = jax.random.split(training_key)
-        loss, params_opt_current, opt_state_current, rec_term, kl = jit_train_step(
+        loss, params_opt_current, opt_state_current, rec_term, kl, dot_products = jit_train_step(
             params_opt_current, opt_state_current, subkey
         )
 
         if epoch % log_every == 0 or epoch == num_epochs - 1:
             print(f"[Epoch {epoch}] Loss (-ELBO): {loss:.4f}")
             print(f"Rec term = {rec_term:.4f} ||| KL Term = {kl:.4f}")
+            
+            mean_dot = jnp.mean(dot_products)
+            median_dot = jnp.median(dot_products)
+            max_dot = jnp.max(dot_products)
+            print(f"Ortho test - Mean: {mean_dot:.4f}, Median: {median_dot:.4f}, Max: {max_dot:.4f}")
 
 
     x_test = jnp.linspace(-3, 3, 200).reshape(-1, 1)
     J = compute_J(params_opt_current["theta"], model_fn_vec, x_train, y_train)
-    thetas, _, _ = sample_theta_exact(
+    thetas, _, _, _ = sample_theta_exact(
         key=post_key,
         num_samples=100,  # number of posterior samples to draw
         J=J,

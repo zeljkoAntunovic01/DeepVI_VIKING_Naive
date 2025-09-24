@@ -76,15 +76,11 @@ def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
 #----------------------------------------------------------
 # Second method: Using Jacobians and solving a system
 #----------------------------------------------------------
-def project_to_kernel(J, eps):
-    """
-    Project eps onto ker(J) using Eq. (15):
-    eps_ker = eps - J^T (J J^T)^{-1} J eps
-    """
-    b = J @ eps                   # (N,)
-    JJt = J @ J.T                  # (N, N)
-    lam = jnp.linalg.solve(JJt, b) # (N,)
-    correction = J.T @ lam         # (D,)
+def project_to_kernel(J, eps, ridge=1e-4):
+    JJt = J @ J.T + ridge * jnp.eye(J.shape[0])
+    b = J @ eps
+    lam = jnp.linalg.solve(JJt, b)   # much more stable than lstsq
+    correction = J.T @ lam
     return eps - correction
 
 def sample_theta_exact(key, num_samples, J, theta_hat, sigma_ker, sigma_im):
@@ -99,7 +95,8 @@ def sample_theta_exact(key, num_samples, J, theta_hat, sigma_ker, sigma_im):
         eps_ker = project_to_kernel(J, eps)
         eps_im = eps - eps_ker
         theta = theta_hat + jnp.exp(sigma_ker) * eps_ker + jnp.exp(sigma_im) * eps_im
-        return theta, eps, eps_ker
+        dot_product = jnp.dot(eps_ker, eps_im)
+        return theta, eps, eps_ker, dot_product
 
-    thetas, eps_samples, eps_ker_samples = jax.vmap(sample_fn)(subkeys)
-    return thetas, eps_samples, eps_ker_samples
+    thetas, eps_samples, eps_ker_samples, dot_products = jax.vmap(sample_fn)(subkeys)
+    return thetas, eps_samples, eps_ker_samples, dot_products
