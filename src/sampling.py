@@ -43,6 +43,7 @@ def calculate_UUt(model_fn, params_vec, x_train, y_train):
 def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, rtol=1e-4):
     # Jacobian: shape (N, D)
     J = compute_J(params_vec, model_fn, x_train, y_train)  # (N, D)
+    D = J.shape[1]
 
     # Full SVD (J = U Σ V^T)
     U, S, VT = jnp.linalg.svd(J, full_matrices=False)  # VT: (D, D)
@@ -56,7 +57,7 @@ def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, rtol=1e-4):
 
     # Projection onto kernel subspace
     UUt = V_null @ V_null.T
-    return UUt
+    return UUt, D - r
 
 def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
     D = theta_hat.shape[0]
