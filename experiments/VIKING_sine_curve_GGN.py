@@ -87,23 +87,23 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec, rank_ker
     rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
 
     # KL term
-    """ kl = KL_term(
+    kl = KL_term(
         prior_vec=prior_vec,
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
         eps_ker_samples=eps_ker_samples
-    ) """
+    )
 
-    kl = KL_term_alpha(
+    """ kl = KL_term_alpha(
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
         eps_ker_samples=eps_ker_samples,
         rank_ker = rank_ker
-    )
+    ) """
 
     elbo = rec_term - kl
     
@@ -132,7 +132,7 @@ def main():
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
-        #"prior_vec": prior_vec,
+        "prior_vec": prior_vec,
         "theta": params_vec,
         "sigma_ker": jnp.log(sigma_kernel),
         "sigma_im": jnp.log(sigma_image),
@@ -143,10 +143,10 @@ def main():
     opt_state = optimizer.init(params_opt)
 
     @jax.jit
-    def train_step(params_opt, opt_state, UUt, key, rank_ker):
+    def train_step(params_opt, opt_state, UUt, key):
         key, subkey = jax.random.split(key)
         grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
-        (loss, (rec_term, kl)), grads = grad_fn(params_opt, model_fn_vec, UUt, x_train, y_train, subkey, prior_vec, rank_ker)
+        (loss, (rec_term, kl)), grads = grad_fn(params_opt, model_fn_vec, UUt, x_train, y_train, subkey, prior_vec)
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
         return loss, params_opt, opt_state, rec_term, kl
@@ -157,7 +157,7 @@ def main():
     for epoch in range(num_epochs):
         training_key, subkey = jax.random.split(training_key)
         UUt, rank_ker = calculate_UUt_svd(model_fn_vec, params_opt_current["theta"], x_train, y_train)
-        loss, params_opt_current, opt_state_current, rec_term, kl = train_step(params_opt_current, opt_state_current, UUt, subkey, rank_ker)
+        loss, params_opt_current, opt_state_current, rec_term, kl = train_step(params_opt_current, opt_state_current, UUt, subkey)
 
         if epoch % log_every == 0 or epoch == num_epochs - 1:
             print(f"[Epoch {epoch}] Loss (-ELBO): {loss:.4f}")

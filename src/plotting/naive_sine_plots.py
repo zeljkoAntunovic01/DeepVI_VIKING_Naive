@@ -67,4 +67,4 @@ def predict_and_plot_bayesian_mean_for_epoch(post_key, model_fn_vec, params_opt_
 
     plt.legend()
     plt.title(f"Bayesian Sine Regression (VIKING Naive VI) - Epoch {epoch}")
-    plt.savefig(f"results/plots/per_epoch/Mean_Bayesian_with_MAP_epoch_{epoch}.png")
+    plt.savefig(f"results/plots/per_epoch/prior_vec/Mean_Bayesian_with_MAP_epoch_{epoch}.png")
