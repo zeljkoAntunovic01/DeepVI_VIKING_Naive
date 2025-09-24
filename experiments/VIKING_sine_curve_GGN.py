@@ -91,22 +91,22 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec):
     rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
 
     # KL term
-    kl = KL_term(
+    """ kl = KL_term(
         prior_vec=prior_vec,
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
         eps_ker_samples=eps_ker_samples
-    )
+    ) """
 
-    """ kl = KL_term_alpha(
+    kl = KL_term_alpha(
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
         eps_ker_samples=eps_ker_samples
-    ) """
+    )
 
     elbo = rec_term - kl
     
@@ -132,7 +132,7 @@ def main():
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
-        "prior_vec": prior_vec,
+        #"prior_vec": prior_vec,
         "theta": params_vec,
         "sigma_ker": jnp.log(sigma_kernel),
         "sigma_im": jnp.log(sigma_image),
