@@ -9,12 +9,26 @@ from src.utils import estimate_sigma, vectorize_nn
 from src.data.sinedata import generate_data
 from src.losses import sse_loss
 
+def compute_J(params_vec, model_fn, x_train, y_train):
+    """
+    Compute per-sample Jacobian of the loss wrt parameters.
+    J has shape (N, D).
+    """
+    def per_sample_loss(p, x, y):
+        y_pred = model_fn(p, x)
+        return jnp.square(y_pred - y).sum()  # SSE per sample
+    
+    # Vectorize over data points
+    per_sample_grad = jax.vmap(jax.grad(per_sample_loss), in_axes=(None, 0, 0))
+    J = per_sample_grad(params_vec, x_train, y_train)  # (N, D)
+    return J
+
 #----------------------------------------------------------
 # First method: Using GGN approximation
 #----------------------------------------------------------
 def calculate_UUt(model_fn, params_vec, x_train, y_train):
     model_fn_lmbd = lambda p: jnp.squeeze(model_fn(p, x_train))
-    J = jax.jacfwd(model_fn_lmbd)(params_vec)
+    J = compute_J(params_vec, model_fn, x_train, y_train)  # (N, D)
     sigma2_est = estimate_sigma(params_vec, model_fn_lmbd, y_train)
 
     GGN = (1.0 / sigma2_est) * (J.T @ J)
@@ -28,8 +42,7 @@ def calculate_UUt(model_fn, params_vec, x_train, y_train):
 
 def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, rtol=1e-4):
     # Jacobian: shape (N, D)
-    model_fn_lmbd = lambda p: jnp.squeeze(model_fn(p, x_train))
-    J = jax.jacfwd(model_fn_lmbd)(params_vec)
+    J = compute_J(params_vec, model_fn, x_train, y_train)  # (N, D)
 
     # Full SVD (J = U Σ V^T)
     U, S, VT = jnp.linalg.svd(J, full_matrices=False)  # VT: (D, D)
@@ -44,7 +57,6 @@ def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, rtol=1e-4):
     # Projection onto kernel subspace
     UUt = V_null @ V_null.T
     return UUt
-
 
 def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
     D = theta_hat.shape[0]
@@ -63,20 +75,6 @@ def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
 #----------------------------------------------------------
 # Second method: Using Jacobians and solving a system
 #----------------------------------------------------------
-def compute_J(params_vec, model_fn, x_train, y_train):
-    """
-    Compute per-sample Jacobian of the loss wrt parameters.
-    J has shape (N, D).
-    """
-    def per_sample_loss(p, x, y):
-        y_pred = model_fn(p, x)
-        return jnp.square(y_pred - y).sum()  # SSE per sample
-    
-    # Vectorize over data points
-    per_sample_grad = jax.vmap(jax.grad(per_sample_loss), in_axes=(None, 0, 0))
-    J = per_sample_grad(params_vec, x_train, y_train)  # (N, D)
-    return J
-
 def project_to_kernel(J, eps):
     """
     Project eps onto ker(J) using Eq. (15):
