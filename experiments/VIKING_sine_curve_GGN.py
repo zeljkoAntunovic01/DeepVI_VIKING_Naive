@@ -18,19 +18,11 @@ NOISE_VAR = 0.96
 
 # Reconstruction term of the ELBO
 def reconstruction_term(model_fn_vec, thetas, x, y):
-    B = x.shape[0]
-    O = y.shape[-1]
     rho = 1 / NOISE_VAR
-    log_rho = jnp.log(rho)
 
     def log_likelihood(theta):
         y_pred = model_fn_vec(theta, x)
-        sse = sse_loss(y_pred, y)
-        log_prob = (
-            -N * O / 2 * jnp.log(2 * jnp.pi)
-            + N * O / 2 * log_rho
-            - (N / B) * 0.5 * rho * sse
-        )
+        log_prob = -0.5 * rho * sse_loss(y_pred, y)
         return log_prob
 
     log_likelihoods = jax.vmap(log_likelihood)(thetas)
@@ -128,7 +120,7 @@ def main():
     params_dict = checkpoint["params"]
     model = checkpoint["train_stats"]["model"]
     params_vec, unflatten, model_fn_vec = vectorize_nn(model.apply, params_dict)
-    
+
     x_test = jnp.linspace(-3, 3, 200).reshape(-1, 1)
     y_map = model_fn_vec(params_vec, x_test).squeeze()
 
