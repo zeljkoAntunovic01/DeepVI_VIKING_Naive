@@ -31,9 +31,9 @@ def reconstruction_term(model_fn_vec, thetas, x, y):
     return jnp.mean(log_likelihoods)
 
 # KL term of the ELBO
-def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
-    sigma_ker_2 = jnp.exp(sigma_ker) ** 2
-    sigma_im_2 = jnp.exp(sigma_im) ** 2
+def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples, rank_ker=None):
+    sigma_ker_2 = jnp.exp(2*sigma_ker)
+    sigma_im_2 = jnp.exp(2*sigma_im)
     prior_vec_inv = 1.0 / prior_vec
     num_samples, D = eps_samples.shape
     hadamard_eps = eps_samples * eps_ker_samples
@@ -53,8 +53,8 @@ def KL_term(prior_vec, theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samp
 
 # KL Term from the paper for debugging purposes
 def KL_term_alpha(theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples, rank_ker=None):
-    sigma_ker_2 = jnp.exp(sigma_ker) ** 2
-    sigma_im_2 = jnp.exp(sigma_im) ** 2
+    sigma_ker_2 = jnp.exp(2*sigma_ker)
+    sigma_im_2 = jnp.exp(2*sigma_im)
     alpha = 1.0 / sigma_ker_2
     num_samples, D = eps_samples.shape
 
@@ -71,7 +71,7 @@ def KL_term_alpha(theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples, 
     ln_det_post = 2 * R * sigma_ker + 2 * (D - R) * sigma_im
 
     return 0.5 * (
-        alpha * trace - D + alpha * (jnp.linalg.norm(theta_hat) ** 2) - D * jnp.log(alpha) - ln_det_post
+        alpha * trace - D + alpha * (jnp.pow(jnp.linalg.norm(theta_hat), 2)) - D * jnp.log(alpha) - ln_det_post
     )
 
 # 5. Loss function (negative ELBO) that needs to be optimized with gradient descent
@@ -95,7 +95,8 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec, rank_ker
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
-        eps_ker_samples=eps_ker_samples
+        eps_ker_samples=eps_ker_samples,
+        rank_ker=rank_ker
     ) """
 
     kl = KL_term_alpha(
@@ -152,10 +153,10 @@ def main():
     opt_state = optimizer.init(params_opt)
 
     @jax.jit
-    def train_step(params_opt, opt_state, UUt, key):
+    def train_step(params_opt, opt_state, UUt, key, rank_ker):
         key, subkey = jax.random.split(key)
         grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
-        (loss, (rec_term, kl)), grads = grad_fn(params_opt, model_fn_vec, UUt, x_train, y_train, subkey, prior_vec)
+        (loss, (rec_term, kl)), grads = grad_fn(params_opt, model_fn_vec, UUt, x_train, y_train, subkey, prior_vec, rank_ker)
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
         return loss, params_opt, opt_state, rec_term, kl
@@ -166,7 +167,7 @@ def main():
     for epoch in range(num_epochs):
         training_key, subkey = jax.random.split(training_key)
         UUt, rank_ker = calculate_UUt_svd(model_fn_vec, params_opt_current["theta"], x_train, y_train)
-        loss, params_opt_current, opt_state_current, rec_term, kl = train_step(params_opt_current, opt_state_current, UUt, subkey)
+        loss, params_opt_current, opt_state_current, rec_term, kl = train_step(params_opt_current, opt_state_current, UUt, subkey, rank_ker)
 
         if epoch % log_every == 0 or epoch == num_epochs - 1:
             print(f"[Epoch {epoch}] Loss (-ELBO): {loss:.4f}")
