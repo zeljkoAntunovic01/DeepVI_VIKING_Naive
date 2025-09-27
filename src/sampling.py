@@ -18,9 +18,9 @@ def compute_J(params_vec, model_fn, x_train, y_train):
         y_pred = model_fn(p, x)
         return jnp.square(y_pred - y).sum()  # SSE per sample
     
+    lmbd = lambda p: jax.vmap(per_sample_loss, in_axes=(None, 0, 0))(p, x_train, y_train)
     # Vectorize over data points
-    per_sample_grad = jax.vmap(jax.grad(per_sample_loss), in_axes=(None, 0, 0))
-    J = per_sample_grad(params_vec, x_train, y_train)  # (N, D)
+    J = jax.jacfwd(lmbd)(params_vec)  # (N, D)
     return J
 
 #----------------------------------------------------------

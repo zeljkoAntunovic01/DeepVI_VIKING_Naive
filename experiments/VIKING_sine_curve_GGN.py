@@ -7,12 +7,14 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from src.models.sinenet import SineNet
 from src.sampling import calculate_UUt, calculate_UUt_svd, sample_theta
 from src.utils import vectorize_nn
 from src.losses import sse_loss
 from src.plotting.naive_sine_plots import plot_bayesian_samples_with_mean, plot_mean_bayesian_with_MAP, predict_and_plot_bayesian_mean_for_epoch
+from src.data.sinedata import generate_data, generate_sine_data
 
-N = 150
+N = 10
 SEED = 42
 NOISE_VAR = 0.96
 
@@ -87,42 +89,49 @@ def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec, rank_ker
     rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
 
     # KL term
-    kl = KL_term(
+    """ kl = KL_term(
         prior_vec=prior_vec,
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
         eps_ker_samples=eps_ker_samples
-    )
+    ) """
 
-    """ kl = KL_term_alpha(
+    kl = KL_term_alpha(
         theta_hat=params_opt["theta"],
         sigma_ker=params_opt["sigma_ker"],
         sigma_im=params_opt["sigma_im"],
         eps_samples=eps_samples,
         eps_ker_samples=eps_ker_samples,
         rank_ker = rank_ker
-    ) """
+    )
 
     elbo = rec_term - kl
     
     return -elbo, (rec_term, kl)
 
 def main():
-    prior_key, post_key = jax.random.split(jax.random.PRNGKey(SEED), num=2)
+    prior_key, post_key, model_key, data_key = jax.random.split(jax.random.PRNGKey(SEED), num=4)
 
     with open("./checkpoints/sine_regression.pickle", "rb") as f:
         checkpoint = pickle.load(f)
 
-    x_train = checkpoint["train_stats"]["x_train"]
-    y_train = checkpoint["train_stats"]["y_train"]
-    params_dict = checkpoint["params"]
-    model = checkpoint["train_stats"]["model"]
-    params_vec, unflatten, model_fn_vec = vectorize_nn(model.apply, params_dict)
+    #x_train = checkpoint["train_stats"]["x_train"]
+    #y_train = checkpoint["train_stats"]["y_train"]
+    x_train, y_train = generate_data(n_train=10, key=data_key)
 
-    x_test = jnp.linspace(-3, 3, 200).reshape(-1, 1)
-    y_map = model_fn_vec(params_vec, x_test).squeeze()
+    params_dict_map = checkpoint["params"]
+    model_map = checkpoint["train_stats"]["model"]
+
+    model_new = SineNet(out_dims=1, hidden_dim=8 ,num_layers=2)
+    params_new = model_new.init(model_key, x_train[:2])
+
+    params_vec, unflatten, model_fn_vec = vectorize_nn(lambda p, x: model_new.apply(p, x), params_new)
+    params_map_vec, unflatten, model_map_fn_vec = vectorize_nn(model_map.apply, params_dict_map)
+
+    x_test = jnp.linspace(-2, 1, 200).reshape(-1, 1)
+    y_map = model_map_fn_vec(params_map_vec, x_test).squeeze()
 
     prior_vec = jnp.clip(jax.random.normal(prior_key, (params_vec.shape[0],)) ** 2, 0.1, 10.0)
 
@@ -132,7 +141,7 @@ def main():
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
-        "prior_vec": prior_vec,
+        #"prior_vec": prior_vec,
         "theta": params_vec,
         "sigma_ker": jnp.log(sigma_kernel),
         "sigma_im": jnp.log(sigma_image),
@@ -162,6 +171,7 @@ def main():
         if epoch % log_every == 0 or epoch == num_epochs - 1:
             print(f"[Epoch {epoch}] Loss (-ELBO): {loss:.4f}")
             print(f"Rec term = {rec_term:.4f} ||| KL Term = {kl:.4f}")
+            print(f"Sigma kernel: {jnp.exp(params_opt_current['sigma_ker']):.4f}, Sigma image: {jnp.exp(params_opt_current['sigma_im']):.4f}, Alpha: {(1.0/ (jnp.exp(params_opt_current['sigma_ker']) ** 2)):.2f}")
         
         if epoch in plot_epochs:
             predict_and_plot_bayesian_mean_for_epoch(post_key, model_fn_vec, params_opt_current, UUt, y_map, x_train, y_train, epoch)

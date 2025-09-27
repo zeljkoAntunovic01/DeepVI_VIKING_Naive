@@ -17,7 +17,8 @@ def generate_data(n_train=100, noise_var = 0.01, key=jax.random.PRNGKey(0)):
 def generate_sine_data(n_train, key):
     std = jnp.linspace(1e-3, 1e0, n_train)
     x = jnp.linspace(0.35, 0.65, n_train)
-    y = 5 * jnp.sin(10 * x)
+    #y = 5 * jnp.sin(10 * x)
 
+    y = 0.1 * jnp.sin(10 * x)
     z = jax.random.normal(key, shape=y.shape)
     return x, y + std * z

@@ -46,7 +46,7 @@ def plot_bayesian_samples_with_mean(x_train, y_train, x_test, y_mean, y_preds):
 
 
 def predict_and_plot_bayesian_mean_for_epoch(post_key, model_fn_vec, params_opt_current, UUt, y_map, x_train, y_train, epoch):
-    x_test = jnp.linspace(-3, 3, 200).reshape(-1, 1)
+    x_test = jnp.linspace(-2, 1, 200).reshape(-1, 1)
     thetas, _, _ = sample_theta(post_key, 50, UUt, params_opt_current["theta"], params_opt_current["sigma_ker"], params_opt_current["sigma_im"])
     y_preds = jax.vmap(lambda t: model_fn_vec(t, x_test))(thetas)
     y_mean, y_std = jnp.mean(y_preds, axis=0).squeeze(), jnp.std(y_preds, axis=0).squeeze()
@@ -67,4 +67,4 @@ def predict_and_plot_bayesian_mean_for_epoch(post_key, model_fn_vec, params_opt_
 
     plt.legend()
     plt.title(f"Bayesian Sine Regression (VIKING Naive VI) - Epoch {epoch}")
-    plt.savefig(f"results/plots/per_epoch/prior_vec/Mean_Bayesian_with_MAP_epoch_{epoch}.png")
+    plt.savefig(f"results/plots/per_epoch/alpha/Mean_Bayesian_with_MAP_epoch_{epoch}.png")
