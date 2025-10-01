@@ -46,17 +46,22 @@ def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, tol=1e-2):
     D = J.shape[1]
 
     # Full SVD (J = U Σ V^T)
-    U, S, VT = jnp.linalg.svd(J, full_matrices=False)  # VT: (D, D)
+    U, S, VT = jnp.linalg.svd(J, full_matrices=True)  # VT: (D, D), S: (min(N, D),)
 
-    # Determine rank (non-negligible singular values)
-    null_mask = S <= tol
+    # Pad singular values up to D (if N < D)
+    S_full = jnp.pad(S, (0, D - S.shape[0]), constant_values=0.0)
+
+    # Identify "nullspace" dimensions (dynamic mask)
+    null_mask = S_full <= tol  # shape (D,)
     rank_ker = jnp.sum(null_mask)
 
-    # Right-singular vectors corresponding to nullspace
-    V_null = VT[null_mask].T  # shape (D, rank_ker)
+    # Build a diagonal mask (float) instead of boolean indexing
+    diag_mask = null_mask.astype(J.dtype)  # (D,)
 
-    # Projection onto kernel subspace
-    UUt = V_null @ V_null.T
+    # Projection: UUt = V diag(mask) V^T
+    V = VT.T  # (D, D)
+    UUt = V @ (diag_mask * V.T)  # broadcasting applies mask to rows/cols
+
     return UUt, rank_ker
 
 def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):

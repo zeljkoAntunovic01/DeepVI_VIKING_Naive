@@ -184,16 +184,17 @@ def main():
         (loss, (rec_term, kl)), grads = grad_fn(params_opt, UUt, x_train, y_train, subkey, prior_vec, rank_ker)
         updates, opt_state = optimizer.update(grads, opt_state)
         params_opt = optax.apply_updates(params_opt, updates)
-        return loss, params_opt, opt_state, rec_term, kl
+        return loss, params_opt, opt_state, rec_term, kl, UUt
 
     for epoch in range(num_epochs):
         training_key, subkey = jax.random.split(training_key)
-        loss, params_opt_current, opt_state_current, rec_term, kl = train_step(params_opt_current, opt_state_current, subkey)
+        loss, params_opt_current, opt_state_current, rec_term, kl, UUt = train_step(params_opt_current, opt_state_current, subkey)
 
         if epoch % log_every == 0 or epoch == num_epochs - 1:
+            print("------------------------------------------------------------")
             print(f"[Epoch {epoch}] Loss (-ELBO): {loss:.4f}")
             print(f"Rec term = {rec_term:.4f} ||| KL Term = {kl:.4f}")
-            print(f"Sigma kernel: {jnp.exp(params_opt_current['sigma_ker']):.4f}, Sigma image: {jnp.exp(params_opt_current['sigma_im']):.4f}, Alpha: {(1.0/ (jnp.exp(params_opt_current['sigma_ker']) ** 2)):.2f}")
+            print(f"Sigma kernel: {jnp.exp(params_opt_current['sigma_ker']):.4f}, Sigma image: {jnp.exp(params_opt_current['sigma_im']):.4f}")
         
         if epoch in plot_epochs:
             predict_and_plot_bayesian_mean_for_epoch(post_key, model_fn_vec, params_opt_current, UUt, y_map, x_train, y_train, epoch)
