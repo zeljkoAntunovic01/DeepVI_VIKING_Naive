@@ -115,7 +115,7 @@ def main():
     _, sample_key = jax.random.split(jax.random.PRNGKey(SEED))
 
     params_opt = {
-        #"prior_vec": prior_vec,
+        "prior_vec": prior_vec,
         "theta": params_vec,
         "sigma_ker": jnp.log(sigma_kernel),
         "sigma_im": jnp.log(sigma_image),
@@ -136,7 +136,8 @@ def main():
         )
         
         rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
-        kl = KL_term_alpha(
+        kl = KL_term(
+            prior_vec=prior_vec,
             theta_hat=params_opt["theta"],
             log_sigma_ker=params_opt["sigma_ker"],
             log_sigma_im=params_opt["sigma_im"],
