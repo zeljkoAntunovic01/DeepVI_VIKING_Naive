@@ -134,7 +134,7 @@ def main():
             sigma_ker=params_opt["sigma_ker"],
             sigma_im=params_opt["sigma_im"]
         )
-        # koristi model_fn_vec iz scope-a
+        
         rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
         kl = KL_term_alpha(
             theta_hat=params_opt["theta"],
@@ -144,6 +144,7 @@ def main():
             eps_ker_samples=eps_ker_samples,
             rank_ker=rank_ker
         )
+        
         elbo = rec_term - kl
         return -elbo, (rec_term, kl)
 
