@@ -48,7 +48,11 @@ def KL_term(prior_vec, theta_hat, log_sigma_ker, log_sigma_im, eps_samples, eps_
 
     ln_det_prior = jnp.sum(jnp.log(prior_vec))
 
-    R = jnp.mean(jnp.sum(eps_samples * eps_ker_samples, axis=1))
+    if rank_ker is not None:
+        R = rank_ker
+    else:
+        # Fallback if not passed
+        R = jnp.mean(jnp.sum(eps_samples * eps_ker_samples, axis=1))
     ln_det_post = 2 * R * log_sigma_ker + 2 * (D - R) * log_sigma_im
     kl = 0.5 * (trace - D + middle_term + ln_det_prior - ln_det_post)
 
@@ -81,35 +85,6 @@ def KL_term_alpha(theta_hat, log_sigma_ker, log_sigma_im, eps_samples, eps_ker_s
     )
 
     return kl / float(D)
-
-# Loss function (negative ELBO) that needs to be optimized with gradient descent
-def loss_fn(params_opt, model_fn_vec, UUt, x, y, sample_key, prior_vec, rank_ker=None):
-    thetas, eps_samples, eps_ker_samples = sample_theta(
-        key=sample_key,
-        num_samples=100,
-        UUt=UUt,
-        theta_hat=params_opt["theta"],
-        sigma_ker=params_opt["sigma_ker"],
-        sigma_im=params_opt["sigma_im"]
-    )
-
-    # Reconstruction part
-    rec_term = reconstruction_term(model_fn_vec, thetas, x, y)
-
-    # KL term
-    kl = KL_term(
-        prior_vec=prior_vec,
-        theta_hat=params_opt["theta"],
-        log_sigma_ker=params_opt["sigma_ker"],
-        log_sigma_im=params_opt["sigma_im"],
-        eps_samples=eps_samples,
-        eps_ker_samples=eps_ker_samples,
-        rank_ker=rank_ker
-    )
-
-    elbo = rec_term - kl
-    
-    return -elbo, (rec_term, kl)
 
 def main():
     prior_key, post_key, model_key = jax.random.split(jax.random.PRNGKey(SEED), num=3)
