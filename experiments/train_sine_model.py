@@ -14,21 +14,21 @@ from src.data.sinedata import generate_data, f
 from src.utils import compute_num_params
 from src.losses import sse_loss
 
-N = 150
+N = 10
 BATCH_SIZE = 10
 NOISE_VAR = 0.01
 SEED = 42
 ALPHA = 1.0
-N_EPOCH = 1000
+N_EPOCH = 3000
 
 def main():
     model_key, data_key = jax.random.split(jax.random.PRNGKey(SEED))
-    x_train, y_train = generate_data(n_train=N, noise_var=NOISE_VAR, key=data_key)
+    x_train, y_train = generate_data(n_train=N, key=data_key, noise_var=NOISE_VAR)
     x_val = jnp.linspace(-2, 2, 100).reshape(-1, 1)
     y_val = f(x_val)
 
-    model = SineNet(out_dims=1, hidden_dim=8 ,num_layers=2)
-    params = model.init(model_key, x_train[:BATCH_SIZE])
+    model = SineNet(out_dims=1, hidden_dim=16 ,num_layers=2)
+    params = model.init(model_key, x_train[:2])
     n_batches = N // BATCH_SIZE
     rho =  1 / NOISE_VAR
     D = compute_num_params(params)
@@ -41,14 +41,10 @@ def main():
     opt_state = optim.init(params)
 
     def map_loss(params, x, y):
-        B = x.shape[0]
-        O = y.shape[-1]
         out = model.apply(params, x)
         vparams = tm.Vector(params)
         log_likelihood = (
-            -N * O / 2 * jnp.log(2 * jnp.pi)
-            + N * O / 2 * log_rho
-            - (N / B) * 0.5 * rho * jnp.sum(jax.vmap(sse_loss)(out, y))
+            -0.5 * rho * jnp.sum(jax.vmap(sse_loss)(out, y))
         )
         log_prior = -D / 2 * jnp.log(2 * jnp.pi) + D / 2 * log_alpha - 0.5 * ALPHA * vparams @ vparams
         loss = log_likelihood + log_prior

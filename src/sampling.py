@@ -40,7 +40,7 @@ def calculate_UUt(model_fn, params_vec, x_train, y_train):
     UUt = I_p - (V @ (1.0 - null_mask)) @ V.T
     return UUt
 
-def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, rtol=1e-4):
+def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, tol=1e-2):
     # Jacobian: shape (N, D)
     J = compute_J(params_vec, model_fn, x_train, y_train)  # (N, D)
     D = J.shape[1]
@@ -49,15 +49,15 @@ def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, rtol=1e-4):
     U, S, VT = jnp.linalg.svd(J, full_matrices=False)  # VT: (D, D)
 
     # Determine rank (non-negligible singular values)
-    tol = rtol * jnp.max(S)
-    r = jnp.sum(S > tol)
+    null_mask = S <= tol
+    rank_ker = jnp.sum(null_mask)
 
-    # Kernel basis is last D - r columns of V^T
-    V_null = VT[r:].T  # (D, D - r)
+    # Right-singular vectors corresponding to nullspace
+    V_null = VT[null_mask].T  # shape (D, rank_ker)
 
     # Projection onto kernel subspace
     UUt = V_null @ V_null.T
-    return UUt, D - r
+    return UUt, rank_ker
 
 def sample_theta(key, num_samples, UUt, theta_hat, sigma_ker, sigma_im):
     D = theta_hat.shape[0]
