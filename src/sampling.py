@@ -9,7 +9,7 @@ from src.utils import estimate_sigma, vectorize_nn
 from src.data.sinedata import generate_data
 from src.losses import sse_loss
 
-def compute_J(params_vec, model_fn, x_train, y_train):
+def compute_J_loss(params_vec, model_fn, x_train, y_train):
     """
     Compute per-sample Jacobian of the loss wrt parameters.
     J has shape (N, D).
@@ -23,7 +23,7 @@ def compute_J(params_vec, model_fn, x_train, y_train):
     J = jax.jacfwd(lmbd)(params_vec)  # (N, D)
     return J
 
-def compute_J_model_output(params_vec, model_fn, x_train):
+def compute_J(params_vec, model_fn, x_train):
     """
     Compute per-sample Jacobian of the model output wrt parameters.
     J has shape (N, D).
@@ -37,7 +37,7 @@ def compute_J_model_output(params_vec, model_fn, x_train):
 #----------------------------------------------------------
 def calculate_UUt(model_fn, params_vec, x_train, y_train):
     model_fn_lmbd = lambda p: jnp.squeeze(model_fn(p, x_train))
-    J = compute_J(params_vec, model_fn, x_train, y_train)  # (N, D)
+    J = compute_J(params_vec, model_fn, x_train)  # (N, D)
     sigma2_est = estimate_sigma(params_vec, model_fn_lmbd, y_train)
 
     GGN = (1.0 / sigma2_est) * (J.T @ J)
@@ -51,7 +51,7 @@ def calculate_UUt(model_fn, params_vec, x_train, y_train):
 
 def calculate_UUt_svd(model_fn, params_vec, x_train, y_train, tol=1e-2):
     # Jacobian: shape (N, D)
-    J = compute_J(params_vec, model_fn, x_train, y_train)  # (N, D)
+    J = compute_J(params_vec, model_fn, x_train)  # (N, D)
     D = J.shape[1]
 
     # Full SVD (J = U Σ V^T)

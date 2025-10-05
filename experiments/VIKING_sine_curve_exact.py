@@ -75,7 +75,7 @@ def KL_term_alpha(theta_hat, sigma_ker, sigma_im, eps_samples, eps_ker_samples):
 
 def loss_fn(params_opt, model_fn_vec, x, y, sample_key):
     # Step 1: Build J at current params
-    J = compute_J(params_opt["theta"], model_fn_vec, x, y)
+    J = compute_J(params_opt["theta"], model_fn_vec, x)
 
     # Step 2: Sample using exact projection
     thetas, eps_samples, eps_ker_samples, dot_products = sample_theta_exact(
@@ -188,7 +188,7 @@ def main():
 
 
     x_test = jnp.linspace(-3, 3, 200).reshape(-1, 1)
-    J = compute_J(params_opt_current["theta"], model_fn_vec, x_train, y_train)
+    J = compute_J(params_opt_current["theta"], model_fn_vec, x_train)
     thetas, _, _, _ = sample_theta_exact(
         key=post_key,
         num_samples=100,  # number of posterior samples to draw

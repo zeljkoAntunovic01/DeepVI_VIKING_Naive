@@ -13,16 +13,6 @@ from src.utils import vectorize_nn
 
 SEED = 42
 
-def linearized_sample_predictions(model_fn_vec, theta_mean, thetas, x_train, y_train):
-    """
-    Predicts using linearized model f_lin(θ) = f(θ_mean) + J(θ - θ_mean)
-    """
-    f_map = model_fn_vec(theta_mean, x_train).squeeze()  # (N,)
-    J = compute_J(theta_mean, model_fn_vec, x_train, y_train)  # (N, D)
-    deltas = thetas - theta_mean  # (S, D)
-    preds = deltas @ J.T + f_map  # (S, N)
-    return preds
-
 if __name__ == "__main__":
     post_key, next_key = jax.random.split(jax.random.PRNGKey(SEED), num=2)
 

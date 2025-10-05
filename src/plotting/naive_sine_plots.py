@@ -6,7 +6,7 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.sampling import compute_J, compute_J_model_output, sample_theta
+from src.sampling import compute_J, sample_theta
 
 def plot_mean_bayesian_with_MAP(x_train, y_train, x_test, y_mean, y_map, y_std):
     plt.figure(figsize=(8, 5))
@@ -81,7 +81,7 @@ def plot_linearized_predictions(x_train, y_train, model_fn_vec, params_vec, thet
     def f_lin(theta):
         # Linearized: f(theta) ≈ f(theta_mean) + J(theta - theta_mean)
         f_map = model_fn_vec(params_vec, x_test).squeeze()  # baseline
-        J = compute_J_model_output(params_vec, model_fn_vec, x_test)  # (N, D)
+        J = compute_J(params_vec, model_fn_vec, x_test)  # (N, D)
         return f_map + (theta - params_vec) @ J.T
 
     lin_preds = jax.vmap(f_lin)(thetas)  # (S, N)
