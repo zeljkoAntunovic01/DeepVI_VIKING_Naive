@@ -102,7 +102,7 @@ def main():
     params_new = model_new.init(model_key, x_train[:2])
 
     params_vec, unflatten, model_fn_vec = vectorize_nn(lambda p, x: model_new.apply(p, x), params_new)
-    params_map_vec, unflatten, model_map_fn_vec = vectorize_nn(model_map.apply, params_dict_map)
+    params_map_vec, unflatten_map, model_map_fn_vec = vectorize_nn(model_map.apply, params_dict_map)
 
     x_test = jnp.linspace(-2, 1, 200).reshape(-1, 1)
     y_map = model_map_fn_vec(params_map_vec, x_test).squeeze()
@@ -184,7 +184,11 @@ def main():
     plot_bayesian_samples_with_mean(x_train, y_train, x_test, y_mean, y_preds)
 
     with open(f"./checkpoints/sine_VIKING_GGN.pickle", "wb") as file:
-        pickle.dump({"elbo_params": {"sigma_ker": params_opt_current["sigma_ker"], "sigma_im": params_opt_current["sigma_im"], "theta": params_opt_current["theta"]}}, file)
+        pickle.dump({"elbo_params": {
+            "sigma_ker": params_opt_current["sigma_ker"], 
+            "sigma_im": params_opt_current["sigma_im"], 
+            "theta": unflatten(params_opt_current["theta"]),
+            "model_config": {"out_dims": 1, "hidden_dim": 16, "num_layers": 2}}}, file)
 
 if __name__ == "__main__":
     main()

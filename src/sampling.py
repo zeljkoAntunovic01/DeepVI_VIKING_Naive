@@ -23,6 +23,15 @@ def compute_J(params_vec, model_fn, x_train, y_train):
     J = jax.jacfwd(lmbd)(params_vec)  # (N, D)
     return J
 
+def compute_J_model_output(params_vec, model_fn, x_train):
+    """
+    Compute per-sample Jacobian of the model output wrt parameters.
+    J has shape (N, D).
+    """
+    lmbd = lambda p: jax.vmap(model_fn, in_axes=(None, 0))(p, x_train).squeeze()
+    # Vectorize over data points
+    J = jax.jacfwd(lmbd)(params_vec)  # (N, D)
+    return J
 #----------------------------------------------------------
 # First method: Using GGN approximation
 #----------------------------------------------------------

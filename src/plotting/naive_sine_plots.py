@@ -6,8 +6,7 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.sampling import sample_theta
-from src.utils import vectorize_nn
+from src.sampling import compute_J, compute_J_model_output, sample_theta
 
 def plot_mean_bayesian_with_MAP(x_train, y_train, x_test, y_mean, y_map, y_std):
     plt.figure(figsize=(8, 5))
@@ -67,4 +66,46 @@ def predict_and_plot_bayesian_mean_for_epoch(post_key, model_fn_vec, params_opt_
 
     plt.legend()
     plt.title(f"Bayesian Sine Regression (VIKING Naive VI) - Epoch {epoch}")
-    plt.savefig(f"results/plots/per_epoch/alpha/Mean_Bayesian_with_MAP_epoch_{epoch}.png")
+    plt.savefig(f"results/plots/per_epoch/prior_vec/Mean_Bayesian_with_MAP_epoch_{epoch}.png")
+
+def plot_linearized_predictions(x_train, y_train, model_fn_vec, params_vec, thetas):
+    """
+    Plot linearized Bayesian model predictions:
+    - Top: posterior samples (blue) + posterior mean (red) + training data (black)
+    - Bottom: standard deviation (variance) across samples
+    """
+
+    x_test = jnp.linspace(-2, 1, 200).reshape(-1, 1)
+
+    # Predict using linearized model for all theta samples
+    def f_lin(theta):
+        # Linearized: f(theta) ≈ f(theta_mean) + J(theta - theta_mean)
+        f_map = model_fn_vec(params_vec, x_test).squeeze()  # baseline
+        J = compute_J_model_output(params_vec, model_fn_vec, x_test)  # (N, D)
+        return f_map + (theta - params_vec) @ J.T
+
+    lin_preds = jax.vmap(f_lin)(thetas)  # (S, N)
+    y_mean_lin = jnp.mean(lin_preds, axis=0)
+    y_std_lin = jnp.std(lin_preds, axis=0)
+
+    # --- Plot ---
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
+
+    # Top: posterior samples + mean + data
+    for i in range(lin_preds.shape[0]):
+        ax1.plot(x_test.squeeze(), lin_preds[i], color='skyblue', alpha=0.3, linewidth=1)
+    ax1.plot(x_test.squeeze(), y_mean_lin, color='crimson', linewidth=2, label="Posterior mean")
+    ax1.scatter(x_train, y_train, color='black', marker='x', s=40, label="Train data")
+
+    ax1.set_title("Linearized Bayesian Model Predictions")
+    ax1.legend(loc="upper right")
+    ax1.set_ylabel("f(x)")
+
+    # Bottom: standard deviation
+    ax2.plot(x_test.squeeze(), y_std_lin, color='steelblue', linewidth=2)
+    ax2.set_ylabel("Standard deviation")
+    ax2.set_xlabel("x")
+
+    plt.tight_layout()
+    plt.savefig("results/plots/Linearized_Predictions.png", dpi=200)
+    plt.close(fig)
